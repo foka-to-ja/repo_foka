@@ -1,0 +1,204 @@
+import os
+import glob
+import csv
+import re
+import pandas as pd
+from datetime import datetime
+import matplotlib.pyplot as plt
+import numpy as np
+import seaborn as sns
+import matplotlib.mlab as mlab
+from sklearn.linear_model import LinearRegression
+import plotly.graph_objects as go
+from scipy.interpolate import UnivariateSpline
+from scipy.stats.kde import gaussian_kde
+from numpy import linspace
+
+path = 'c:\\Users\hjmwgq\Desktop\PYTHON\PYTHON2\DIALOG_ONLY'
+extension = 'csv'
+combined_csv = pd.DataFrame({'angle':[],'input_angle':[],'time':[],'distance':[],})
+os.chdir(path)
+result = glob.glob('*.{}'.format(extension))
+headers = ['angle','input_angle','time','distance']
+max_distance = 1000
+files = []
+legend = []
+a = []
+b = []
+c = []
+d = []
+
+for distance in list(range(max_distance)):    
+            for singleFile in result:  
+                dialog = re.search("^Dialog_" + str(distance) + "_",singleFile)
+                headers = ['angle','input_angle','time']
+                if dialog != None:
+                    file = pd.read_csv(singleFile,sep = ',',names=headers,skiprows=[0],error_bad_lines =False)
+                    distancepd = pd.DataFrame({'distance': len(file['input_angle'])*[distance]})
+                    file.insert(3,'distance',distancepd,True)
+                    files.append(file)                
+combined_csv = pd.concat(file for file in files)
+combined_csv.to_csv( "combined_csv.csv")
+
+combined_csv['distance_correct']=pd.to_numeric(combined_csv['distance'],errors='coerce')
+
+for key,group in combined_csv.groupby(['distance_correct']):
+############OFFSET
+    offset=0.5471405904286408-0.9307316685892799+0.016646281555235287
+###########DATA FILTER            
+    combined_csv['input_angle_correct'] = pd.to_numeric(combined_csv['input_angle'],errors='coerce')
+    combined_csv['angle_correct'] = pd.to_numeric(combined_csv['angle']-offset,errors='coerce')
+    combined_csv['angle_correct_error'] = (combined_csv['input_angle_correct']-combined_csv['angle_correct'])
+    combined_csv=combined_csv.dropna()
+    combined_csv=combined_csv[combined_csv['input_angle_correct'].abs()<50]  
+for key,group in combined_csv.groupby(['input_angle_correct']):
+    ###########EDIT RANGE OF MODULE
+#Dialog amount of errors considering angles
+        if key <= 40:
+            if key >= -40:
+                combined_csv['angle_errors_with_offset'] = combined_csv['angle_correct_error']
+                legend.append(str(key))
+                plt.title('Dialog amount of errors considering angles')
+                plt.xlabel('Angle error [deg]')
+                plt.ylabel('Amount of errors')             
+                plt.hist(group['angle_correct_error'],bins=120,range=(-45, 45))
+                plt.axis([-50,50,0,800])
+                plt.grid(b=True, which='both', color='k', linestyle='--')
+plt.legend(legend)
+filename ="Dialog_all_errors"+ ".png"            
+plt.savefig(filename)
+plt.close()
+
+#AMOUNT OF ERRORS
+#Dialog_all_errors_sum
+plt.title('Dialog amount of errors')
+plt.xlabel('Angle error [deg]')
+plt.ylabel('Amount of errors')
+plt.hist(combined_csv['angle_errors_with_offset'],bins = 120,range=(-55, 55))
+plt.axis([-40,40,0,3000])
+plt.grid(b=True, which='both', color='k', linestyle='--')
+filename ="Dialog_all_errors_sum"+ ".png"            
+plt.savefig(filename)
+plt.close()
+
+plt.title('Dialog probability of errors')
+plt.xlabel('Angle error [deg]')
+plt.ylabel('Probability')
+data = combined_csv['angle_correct_error']
+kde = gaussian_kde( data )
+# these are the values over wich your kernel will be evaluated
+dist_space = linspace( min(data), max(data), 10 )
+# plot the results
+plt.plot( dist_space, kde(dist_space) )
+plt.axis([-40,40,0,0.06])
+plt.grid(b=True, which='both', color='k', linestyle='--')
+filename ="Dialog_error_probability"+ ".png"            
+plt.savefig(filename)
+plt.close() 
+               
+for key,group in combined_csv.groupby(['input_angle_correct']):
+###########EDIT RANGE OF MODULE
+        if key <= 40:
+            if key >= -40:
+###########MEANS
+                try:
+                    a = np.asarray(c).reshape((-1, 1))
+                    b = np.asarray(d)
+                    model = LinearRegression().fit(a, b)
+                    y_predictor = model.predict(a)
+                    print('intercept:', model.intercept_)
+                    
+                except:
+                    pass
+                mean = group['angle_correct'].mean(axis=0)
+                c.append(key) 
+                d.append(mean)
+                
+plt.grid(b=True, which='both', color='k', linestyle='--')
+plt.plot(a, y_predictor, color = 'green')
+plt.plot(c, d,'ro',[-45,45],[-45,45])
+plt.axis([-50,50,-50,50])
+plt.title('Dialog input angles and means_' +str("%.2f" %offset))
+plt.xlabel('Input angle [deg]')
+plt.ylabel('Mean [deg]')    
+filename ="Dialog_all_means" + ".png"
+plt.savefig(filename)
+plt.close()
+c=[]
+d=[]
+
+for key,group in combined_csv.groupby(['input_angle_correct']):
+###########EDIT RANGE OF MODULE
+        if key <= 40:
+            if key >= -40:
+###########STD
+                std = group['angle_correct'].std(axis=0)
+                c.append(key)
+                d.append(std)
+plt.grid(b=True, which='both', color='k', linestyle='--')
+plt.bar(c, d, align = 'center', alpha = 0.5)
+plt.axis([-50,50,-1,20])
+plt.title('Dialog input angles and deviations_'+str("%.2f" %offset))
+plt.xlabel('Input angle [deg]')
+plt.ylabel('Deviation [deg]')    
+filename ="Dialog_all_deviations" + ".png"
+plt.savefig(filename)
+plt.close()
+c=[]
+d=[]
+for key,group in combined_csv.groupby(['input_angle_correct']):
+###########EDIT RANGE OF MODULE
+        if key <= 40:
+            if key >= -40:
+                for key,group in combined_csv.groupby(['distance']):
+                ###########ERRORS DISTANCE
+                                error_mean = group['angle_errors_with_offset'].mean(axis=0)
+                                c.append(key)
+                                d.append(abs(error_mean))
+                                print('Mean:' + str(error_mean))
+                plt.grid(b=True, which='both', color='k', linestyle='--')
+                plt.plot(c, d, c, d,'ro')
+                plt.axis([-0,850,0,12.5])
+                plt.title('Dialog absolute errors means for distances ' +str("%.2f" %offset))
+                plt.xlabel('Distance [cm]')
+                plt.ylabel('Errors mean [deg]')    
+                filename ="Dialog_all_errors_distances_abs" + ".png"
+                plt.savefig(filename)
+                plt.close()
+                c=[]
+                d=[]
+
+#ERRORS STD
+for key,group in combined_csv.groupby(['input_angle_correct']):
+###########EDIT RANGE OF MODULE
+        if key <= 40:
+            if key >= -40:
+                for key,group in combined_csv.groupby(['distance']):
+                ###########ERRORS DISTANCE
+                                error_std = group['angle_errors_with_offset'].std(axis=0)
+                                print(error_std)
+                                c.append(key)
+                                d.append(error_std)
+                                print('Std:' + str(error_std))
+                plt.grid(b=True, which='both', color='k', linestyle='--')
+                plt.plot(c, d, c, d, 'ro')
+                plt.axis([-0,850,0,20])
+                plt.title('Dialog errors std for distances ' +str("%.2f" %offset))
+                plt.xlabel('Distance [cm]')
+                plt.ylabel('Errors std [deg]')    
+                filename ="Dialog_all_errors_distances_std" + ".png"
+                plt.savefig(filename)
+                plt.close()
+                c=[]
+                d=[]
+
+
+
+
+ 
+
+
+    
+
+                            
+                            
